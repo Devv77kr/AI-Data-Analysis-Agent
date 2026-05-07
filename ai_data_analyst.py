@@ -357,7 +357,7 @@ elif uploaded_file is not None and not st.session_state.openai_key:
 else:
     # Welcome message when no file is uploaded
     st.info("""
-    ### Welcome to Data Analyst Agent! ���
+    ### Welcome to Data Analyst Agent!
     
     **Getting started:**
     1. Enter your OpenAI API key in the sidebar
