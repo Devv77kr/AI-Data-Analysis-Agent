@@ -156,17 +156,32 @@ def smart_type_conversion(df):
     
     return df
 
-# Function to initialize agent
-@st.cache_resource
+# Function to initialize agent - WITHOUT caching to ensure fresh API key
 def initialize_agent(api_key):
-    """Initialize the data analyst agent with caching"""
+    """Initialize the data analyst agent with proper API key validation"""
     try:
         logger.info("Initializing data analyst agent")
         
+        # Validate API key
+        if not api_key or len(api_key.strip()) == 0:
+            raise ValueError("API key is empty")
+        
+        # Set environment variable for OpenAI
+        os.environ['OPENAI_API_KEY'] = api_key
+        
+        # Create DuckDB tools
         duckdb_tools = DuckDbTools()
         
+        # Create OpenAI model with explicit API key
+        openai_model = OpenAIChat(
+            id="gpt-4o",
+            api_key=api_key
+        )
+        
+        # Create agent with explicit model and tools
         agent = Agent(
-            model=OpenAIChat(id="gpt-4o", api_key=api_key),
+            name="Data Analyst",
+            model=openai_model,
             tools=[duckdb_tools, PandasTools()],
             system_message="""You are an expert data analyst with deep knowledge of SQL, statistics, and data visualization. 
 Your responsibilities:
@@ -179,12 +194,17 @@ Your responsibilities:
 When providing code, format it clearly with proper syntax highlighting.
 Be proactive in identifying data quality issues and patterns.""",
             markdown=True,
+            add_history_to_messages=True,
         )
         
         st.session_state.duckdb_tools = duckdb_tools
         logger.info("Agent initialized successfully")
         return agent
         
+    except ValueError as ve:
+        logger.error(f"API key validation failed: {ve}")
+        st.error(f"❌ Invalid API key: {str(ve)}")
+        return None
     except Exception as e:
         logger.error(f"Agent initialization failed: {e}")
         st.error(f"❌ Failed to initialize agent: {str(e)}")
@@ -234,7 +254,9 @@ with col2:
     if st.button("🔄 Reset Analysis"):
         st.session_state.dataframe = None
         st.session_state.agent = None
+        st.session_state.duckdb_tools = None
         st.session_state.query_history = []
+        st.cache_resource.clear()
         st.rerun()
 
 # File upload widget
@@ -258,7 +280,7 @@ if uploaded_file is not None and st.session_state.openai_key:
         with st.expander("📊 View Full Dataset", expanded=False):
             st.dataframe(df, use_container_width=True)
         
-        # Initialize agent if not already done
+        # Initialize agent if not already done (recreate on each run to ensure fresh API key)
         if st.session_state.agent is None:
             st.session_state.agent = initialize_agent(st.session_state.openai_key)
         
@@ -269,6 +291,7 @@ if uploaded_file is not None and st.session_state.openai_key:
                     path=temp_path,
                     table="uploaded_data",
                 )
+                logger.info("Data loaded to DuckDB successfully")
             except Exception as e:
                 logger.error(f"DuckDB loading error: {e}")
                 st.error(f"❌ Error loading data to DuckDB: {str(e)}")
